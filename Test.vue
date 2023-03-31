@@ -8,13 +8,15 @@
     </span>
     <div id="div1929473173264">
       <span id="span1929473174272">
-        李鑫你好
+        {{text}}
       </span>
     </div>
-    <img src="https://yun.nana7mi.link/afternoon.webp" id="img1929473173840" />
-    <img src="https://yun.nana7mi.link/afternoon.webp" id="img1929473174176" />
+    <img :src="img2" id="img1929473173840" />
+    <img :src="img1" id="img1929473174176" />
   </div>
 </template>
+
+<script></script>
 
 <style scoped>
 #div1929473173648 {
@@ -47,9 +49,9 @@
 #img1929473174176 {
   position: absolute;
   top: 50px;
-  left: 700px;
+  left: 175px;
   margin: 1em;
-  width: 20%;
+  width: 75%;
   display: block;
   border-radius: 10px;
 }

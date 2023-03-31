@@ -374,8 +374,9 @@ def read_template(filepath: str, data: dict = dict()):
 
 
 data = {
-    "img_url": "https://yun.nana7mi.link/7mi.webp",
-    "face": "https://i1.hdslb.com/bfs/face/86faab4844dd2c45870fdafa8f2c9ce7be3e999f.jpg@120w_120h_1c.webp"
+    "img1": "https://yun.nana7mi.link/7mi.webp",
+    "img2": "https://yun.nana7mi.link/afternoon.webp",
+    "text": "测试用文本"
 }
 config = read_template(".\Test.vue", data)
 createApp(1000).mount(config).export().canvas.show()
