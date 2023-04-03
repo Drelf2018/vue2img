@@ -1,31 +1,19 @@
-import json
-from io import BytesIO
-from typing import Dict, List, Tuple
+import os
+from io import BytesIO, TextIOWrapper
+from typing import Tuple
 
 import httpx
 from lxml import etree
 from PIL import Image, ImageDraw, ImageFont
 
+from . import template
+from .operation import radiusMask
 
-def radiusMask(alpha: Image.Image, *radius: float, beta: float = 10):
-    "给遮罩层加圆角"
-
-    w, h = alpha.size
-    # 圆角的位置
-    position = [
-        (0, 0),
-        (int(w - radius[1]), 0),
-        (int(w - radius[2]), int(h - radius[2])),
-        (0, int(h - radius[3]))
-    ]
-    for i, r in enumerate(radius):
-        # 这里扩大 beta 倍画完扇形又缩小回去是为了抗锯齿
-        circle = Image.new('L', (int(beta * r), int(beta * r)), 0)  # 创建黑色方形
-        draw = ImageDraw.Draw(circle)
-        draw.pieslice(((0, 0), (int(2 * beta * r), int(2 * beta * r))), 180, 270, fill=255)  # 绘制白色扇形
-        circle = circle.rotate(-90 * i).resize((int(r), int(r)), Image.LANCZOS)  # 旋转以及缩小
-        alpha.paste(circle, position[i])
-    return alpha
+FONTPATH = os.path.abspath(
+    os.path.join(
+        os.path.dirname(__file__), "font", "HarmonyOS_Sans_SC_Bold.ttf"
+    )
+)
 
 
 class Tag:
@@ -41,7 +29,7 @@ class Tag:
             self.position = self.style.get("position", "static")
         except:
             print(self)
-        
+
         # 计算 先计算字号再计算宽度
         self.font_size, = self.calc(key="font-size")
         self.width, = self.calc(key="width")
@@ -54,7 +42,7 @@ class Tag:
         children = data.pop("children", [])
         self.children = list(map(self.makeTag, children))
         self.__dict__.update(data)
-        
+
         # 导出 html
         tt = "\n" + "  " * (self.depth-1)
         self.repr = tt.join(map(str, self.children))
@@ -74,19 +62,18 @@ class Tag:
     def __repr__(self):
         tt = "  " * self.depth
         return f'{tt}<{self.tag} id="{self.id}">\n{self.repr}\n{tt}</{self.tag}>'
-    
+
     @property
     def id(self):
         return f"{self.tag}{id(self)}"
 
     @property
     def css(self):
-        cs = ["#" + self.id +
-              " {\n" + "\n".join([f"  {k}: {v};" for k, v in self.style.items()]) + "\n}"]
+        cs = ["#" + self.id + " {\n" + "\n".join([f"  {k}: {v};" for k, v in self.style.items()]) + "\n}"]
         for c in self.children:
             cs += c.css
         return cs
-    
+
     @property
     def element(self) -> etree._Element:
         return etree.HTML(str(self))
@@ -127,7 +114,7 @@ class Tag:
             # 判空
             if val == "calc" or val == "":
                 continue
-            
+
             # 计算括号层数
             if val.startswith("("):
                 inner += 1
@@ -139,7 +126,7 @@ class Tag:
                 arg += val
             else:
                 arg += str(self.toFloat(key, val))
-            
+
             # 在括号最外层则添加
             if inner == 0:
                 expr.append(arg)
@@ -175,10 +162,10 @@ class Tag:
         elif marginLen == 3:
             return (*marginAll, marginAll[1])
         return marginAll
-    
+
     def paste(self, canvas: Image.Image, draw: ImageDraw.ImageDraw, left: float, top: float):
         "将内容粘贴在画布上"
-        
+
         # 位移
         x = self.m3 + self.p3
         y = self.m0 + self.p0
@@ -206,7 +193,7 @@ class ImgTag(Tag):
 
     def __repr__(self):
         return "  " * self.depth + f'<img src="{self.src}" id="{self.id}" />'
-    
+
     def setSize(self) -> float:
         res = httpx.get(self.src)
         data = BytesIO(res.content)
@@ -248,10 +235,10 @@ class TextTag(Tag):
         return 0.0, 0.0, 0.0, 0.0
 
     def setSize(self) -> float:
-        self.font = ImageFont.truetype(".\HarmonyOS_Sans_SC_Bold.ttf", int(self.parent.font_size), encoding="utf-8")
+        self.font = ImageFont.truetype(FONTPATH, int(self.parent.font_size), encoding="utf-8")
         self.sentence = ""
         self.height = 0
-        
+
         sentence = ""
         for chn in self.text:
             if self.font.getlength(sentence + chn) > self.parent.width:
@@ -264,7 +251,7 @@ class TextTag(Tag):
                 self.calcHeight(sentence)
 
         return self.height
-    
+
     def paste(self, _: Image.Image, draw: ImageDraw.ImageDraw, left: float, top: float):
         draw.text((left, top), self.sentence, self.parent.style.get("color", "black"), self.font)
 
@@ -274,11 +261,20 @@ class createApp(Tag):
         self.width = width
         self.depth = depth
         self.font_size = font_size
-    
-    def mount(self, config: dict):
+        self.canvas = None
+
+    def mount(self, config: dict = None, vue: str = None, fp: TextIOWrapper = None, path: str = None, data: dict = dict()):
+        if vue is not None:
+            config = template.loads(vue, data)
+        elif fp is not None:
+            config = template.load(fp, data)
+        elif path is not None:
+            config = template.file(path, data)
+        assert config is not None, "config lost"
         self.html = self.makeTag(config)
+        self.canvas = None
         return self
-    
+
     def export(self, filepath: str = None):
         "导出图片"
 
@@ -295,88 +291,19 @@ class createApp(Tag):
             self.canvas.save(filepath)
 
         return self
-    
-    def saveAsVue(self, filepath: str):
-        "导出 Vue"
 
-        with open(filepath, "w+", encoding="utf-8") as fp:
-            css = "\n\n".join(self.html.css)
-            fp.write(f"<template>\n{self.html}\n</template>\n\n<style scoped>\n{css}\n</style>")
-        
+    def show(self):
+        if self.canvas is None:
+            self.export()
+        self.canvas.show()
         return self
 
+    def save(self, path: str):
+        "导出 Vue"
 
-def read_template(filepath: str, data: dict = dict()):
-    # 获取 vue 文本
-    vue = open(filepath, "r+", encoding="utf-8").read()
-    # 获取 style 和 template
-    html: etree._Element = etree.HTML(vue)
-    style: str = html.findtext("body/style")
-    template: etree._Element = html.find("body/template")
-    
-    # 样式表
-    stylesheet: Dict[int, Dict[str, str]] = dict()
-    
-    # 给每个节点设置 attr 标记
-    nodes: List[etree._Element] = [template]
-    for node in nodes:
-        node_id = str(id(node))
-        node.set("python", node_id)
-        nodes += node.getchildren()
-        stylesheet[node_id] = dict()
-    
-    def style2dict(s: str):
-        "将字符串 style 转换为 dict"
+        with open(path, "w+", encoding="utf-8") as fp:
+            css = "\n\n".join(self.html.css)
+            fp.write(
+                f"<template>\n{self.html}\n</template>\n\n<style scoped>\n{css}\n</style>")
 
-        if s is None:
-            return dict()
-        content = '{"' + (s.replace("\n", "") + ";").replace(";;", ";").replace(":", '":"').replace(";", '","').strip()[:-2] + "}"
-        json_style: Dict[str, str] = json.loads(content)
-        return {k.strip(): v.strip() for k, v in json_style.items()}
-
-    # 解析 style
-    for item in style.split("}"):
-        item_split = item.split("{")
-        if len(item_split) != 2 or item_split[1].strip() == "":
-            continue
-
-        # 把 css 具体键值转换为 json 文本格式再解析成 dict
-        calc_style = style2dict(item_split[1])
-        
-        # css 选择后将其更新在样式表里
-        for ele in template.cssselect(item_split[0]):
-            if isinstance(ele, etree._Element):
-                stylesheet[ele.get("python")].update(calc_style)
-    
-    def dfs(node: etree._Element | str):
-        if isinstance(node, str):
-            return node.strip().replace(r"{{", r"{").replace(r"}}", r"}").format_map(data)
-        elif isinstance(node, etree._Element):
-            # 从样式表提取 style 并用内联 style 优先替换
-            style = stylesheet[node.get("python")]
-            style.update(style2dict(node.get("style")))
-            # 标签名 style 和子元素
-            config = {
-                "tag": node.tag,
-                "style": style,
-                "children": list(filter(lambda s: s != "", map(dfs, node.xpath("./*|text()"))))
-            }
-            # 各种数据 例如 img 的 src
-            for k, v in node.items():
-                if k not in ["style", "python", "id", "class"]:
-                    if k.startswith(":"):
-                        config[k[1:]] = data.get(v, "")
-                    else:
-                        config[k] = v
-            return config
-    
-    return dfs(template.find("./*"))
-
-
-data = {
-    "img1": "https://yun.nana7mi.link/7mi.webp",
-    "img2": "https://yun.nana7mi.link/afternoon.webp",
-    "text": "测试用文本"
-}
-config = read_template(".\Test.vue", data)
-createApp(1000).mount(config).export().canvas.show()
+        return self
