@@ -1,7 +1,21 @@
+import os
+from typing import Set, Tuple
+
+import jieba
+import numpy as np
 from PIL import Image, ImageDraw
+from wordcloud import STOPWORDS, WordCloud
+
+from .font import FontWeight
+
+stopwords = os.path.abspath(
+    os.path.join(
+        os.path.dirname(__file__), "stopwords.txt"
+    )
+)
 
 
-def radiusMask(alpha: Image.Image, *radius: float, beta: float = 10):
+def radiusMask(alpha: Image.Image, radius: Tuple[float], beta: float = 10):
     "给遮罩层加圆角"
 
     w, h = alpha.size
@@ -20,3 +34,25 @@ def radiusMask(alpha: Image.Image, *radius: float, beta: float = 10):
         circle = circle.rotate(-90 * i).resize((int(r), int(r)), Image.LANCZOS)  # 旋转以及缩小
         alpha.paste(circle, position[i])
     return alpha
+
+
+def word2cloud(danmakus: str, mask: Image.Image, content: Set[str] = set()) -> Image.Image:
+    # jieba 分词
+    jieba.add_word('睡啄')
+    sentence = "/".join(jieba.cut(danmakus))
+    graph = np.array(mask)
+
+    # 停用词
+    if not content:
+        content = set(line.strip() for line in open(stopwords, "r", encoding="utf-8").readlines())
+
+    # 词云
+    return WordCloud(
+        font_path=FontWeight("Regular"),
+        prefer_horizontal=1,
+        collocations=False,
+        background_color=None,
+        mask=graph,
+        stopwords=content | STOPWORDS,  
+        mode="RGBA"
+    ).generate(sentence).to_image()

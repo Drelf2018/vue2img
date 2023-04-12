@@ -1,4 +1,3 @@
-import os
 from io import BytesIO, TextIOWrapper
 from typing import Tuple
 
@@ -8,12 +7,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 from . import template
 from .operation import radiusMask
-
-FONTPATH = os.path.abspath(
-    os.path.join(
-        os.path.dirname(__file__), "font", "HarmonyOS_Sans_SC_Bold.ttf"
-    )
-)
+from .font import FontWeight
 
 
 class Tag:
@@ -25,14 +19,11 @@ class Tag:
 
         # 基础 style
         self.style = data.pop("style", {})
-        try:
-            self.position = self.style.get("position", "static")
-        except:
-            print(self)
+        self.position = self.style.get("position", "static")
 
         # 计算 先计算字号再计算宽度
-        self.font_size, = self.calc(key="font-size")
-        self.width, = self.calc(key="width")
+        self.font_size, = self.calc("font-size")
+        self.width, = self.calc("width")
 
         # 计算 margin padding
         self.m0, self.m1, self.m2, self.m3 = self.outside("margin")
@@ -147,6 +138,9 @@ class Tag:
         else:
             self.height += lm
 
+        # 强制覆盖高度
+        self.height, = self.calc("height", self.height)
+
         return self.height
 
     def outside(self, key: str) -> Tuple[float, float, float, float]:
@@ -171,7 +165,7 @@ class Tag:
         y = self.m0 + self.p0
         # 背景颜色
         bg = Image.new('RGBA', (int(self.p3 + self.width + self.p1), int(self.p0 + self.height + self.p2)), self.style.get("background-color", "rgba(0,0,0,0)"))
-        a = radiusMask(bg.getchannel("A"), *self.outside("border-radius"))
+        a = radiusMask(bg.getchannel("A"), self.outside("border-radius"))
         canvas.paste(bg, (int(left + self.m3), int(top + self.m0)), a)
         # 内容
         lm = 0
@@ -205,7 +199,7 @@ class ImgTag(Tag):
     def paste(self, canvas: Image.Image, _: ImageDraw.ImageDraw, left: float, top: float):
         x = self.m3 + self.p3
         y = self.m0 + self.p0
-        a = radiusMask(self.img.getchannel("A"), *self.outside("border-radius"))
+        a = radiusMask(self.img.getchannel("A"), self.outside("border-radius"))
         canvas.paste(self.img, (int(left + x), int(top + y)), a)
 
 
@@ -235,7 +229,8 @@ class TextTag(Tag):
         return 0.0, 0.0, 0.0, 0.0
 
     def setSize(self) -> float:
-        self.font = ImageFont.truetype(FONTPATH, int(self.parent.font_size), encoding="utf-8")
+        fontpath = FontWeight(self.parent.style.get("font-weight", "Medium"))
+        self.font = ImageFont.truetype(fontpath, int(self.parent.font_size), encoding="utf-8")
         self.sentence = ""
         self.height = 0
 
@@ -281,7 +276,7 @@ class createApp(Tag):
         # 获取画布高度
         self.height = self.html.setSize()
         # 创建画布
-        self.canvas = Image.new('RGBA', (int(self.width), int(self.height)), self.html.style.get("background-color", "white"))
+        self.canvas = Image.new('RGBA', (int(self.width), int(self.height)), self.html.style.get("background-color", "#00000000"))
         # 创建画笔
         self.draw = ImageDraw.Draw(self.canvas)
         # 绘制
