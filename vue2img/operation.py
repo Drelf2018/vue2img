@@ -56,3 +56,21 @@ def word2cloud(danmakus: str, mask: Image.Image, content: Set[str] = set()) -> I
         stopwords=content | STOPWORDS,  
         mode="RGBA"
     ).generate(sentence).to_image()
+
+
+def getCuttedBody(nanami: Image.Image):
+    "返回下半身具有透明的图片"
+
+    w = int(nanami.width * 600 / nanami.height)
+    nanami = nanami.resize((w, 600), Image.ANTIALIAS)
+    body = nanami.crop((0, 0, w, 400))  # 不是跟下半身切割了吗 上半身透明度保留
+
+    a = body.getchannel('A')
+    pix = a.load()
+    for i in range(351, 400):
+        for j in range(w):
+            pix[j, i] = int((8-0.02*i) * pix[j, i])  # 下半部分透明度线性降低
+
+    body.putalpha(a)
+
+    return body

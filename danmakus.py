@@ -15,13 +15,13 @@ class ukamnads(Request):
         super().__init__()
         self.session.base_url = base_url
 
-    async def get_last_liveid(self, uid: int | str) -> str | None:
+    async def get_last_liveid(self, uid: int | str, last: int = 0) -> str | None:
         "获取最近直播序号"
 
         data: dict = await self.request("GET", "/channel", params={"uId": uid})
         lives: List[dict] = data.get("data", {}).get("lives", [])
-        if len(lives) != 0:
-            return lives[0].get("liveId", None)
+        if len(lives) > last:
+            return lives[last].get("liveId", None)
         
     async def get_live(self, liveid: str) -> dict:
         "获取直播数据"
@@ -49,6 +49,18 @@ class ukamnads(Request):
             if mes.strip() != "":
                 messages.append(mes)
         return messages
+
+    def get_income(self, live: dict):
+        danmakus: List[dict] = live.get("data", {}).get("data", {}).get("danmakus", [])
+        gift = guard = superchat = 0.0
+        for dm in danmakus:
+            if dm["type"] == 1:
+                gift += dm["price"]
+            elif dm["type"] == 2:
+                guard += dm["price"]
+            elif dm["type"] == 3:
+                superchat += dm["price"]
+        return gift, guard, superchat
 
     async def get_last_live_messages_all_in_one_string_by_uid(self, uid: int | str, junction: str = "/"):
         "异步获取拼接后直播弹幕文本"

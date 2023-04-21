@@ -5,7 +5,7 @@ import httpx
 from lxml import etree
 from PIL import Image, ImageDraw, ImageFont
 
-from . import template
+from .template import template
 from .operation import radiusMask
 from .font import FontWeight
 
@@ -128,11 +128,18 @@ class Tag:
     def setSize(self) -> float:
         self.height = 0
 
+        inline = 0
         lm = 0
         for c in self.children:
             h = c.setSize()
             if c.position == "absolute":
                 continue
+            if c.style.get("display", "block").startswith("inline"):
+                inline = max(inline, max(lm, c.m0) + c.p0 + h + c.p2)
+                continue
+            else:
+                self.height += inline + max(lm, c.m0) + c.p0 + h + c.p2
+                inline = 0
             self.height += max(lm, c.m0) + c.p0 + h + c.p2
             lm = c.m2
         else:
@@ -163,6 +170,7 @@ class Tag:
         # 位移
         x = self.m3 + self.p3
         y = self.m0 + self.p0
+        inline = 0
         # 背景颜色
         bg = Image.new('RGBA', (int(self.p3 + self.width + self.p1), int(self.p0 + self.height + self.p2)), self.style.get("background-color", "rgba(0,0,0,0)"))
         a = radiusMask(bg.getchannel("A"), self.outside("border-radius"))
@@ -176,22 +184,29 @@ class Tag:
                 c.paste(canvas, draw, cleft, ctop)
             else:
                 c.paste(canvas, draw, left + x, top + y + max(lm - c.m0, 0))
-                y += max(lm, c.m0) + c.p0 + c.height + c.p2
+                if c.style.get("display", "block").startswith("inline"):
+                    inline = max(inline, max(lm, c.m0) + c.p0 + c.height + c.p2)
+                else:
+                    y += inline + max(lm, c.m0) + c.p0 + c.height + c.p2
+                    inline = 0
                 lm = c.m2
 
 
 class ImgTag(Tag):
     def __init__(self, data: dict, parent: Tag = None):
-        self.src = ""
+        self.src: str | Image.Image = ""
         super().__init__("img", data, parent)
 
     def __repr__(self):
         return "  " * self.depth + f'<img src="{self.src}" id="{self.id}" />'
 
     def setSize(self) -> float:
-        res = httpx.get(self.src)
-        data = BytesIO(res.content)
-        img = Image.open(data)
+        if isinstance(self.src, str):
+            res = httpx.get(self.src)
+            data = BytesIO(res.content)
+            img = Image.open(data)
+        else:
+            img = self.src
         self.height = img.height * self.width / img.width
         self.img = img.resize((int(self.width), int(self.height)), Image.LANCZOS).convert("RGBA")
         return self.height
@@ -210,6 +225,7 @@ class TextTag(Tag):
         self.parent = parent
         self.depth = parent.depth + 1
         self.position = "static"
+        self.style = dict()
 
         self.m0 = self.m1 = self.m2 = self.m3 = self.p0 = self.p1 = self.p2 = self.p3 = 0.0
 
@@ -259,12 +275,13 @@ class createApp(Tag):
         self.canvas = None
 
     def mount(self, config: dict = None, vue: str = None, fp: TextIOWrapper = None, path: str = None, data: dict = dict()):
+        tp = template(data)
         if vue is not None:
-            config = template.loads(vue, data)
+            config = tp.loads(vue)
         elif fp is not None:
-            config = template.load(fp, data)
+            config = tp.load(fp)
         elif path is not None:
-            config = template.file(path, data)
+            config = tp.file(path)
         assert config is not None, "config lost"
         self.html = self.makeTag(config)
         self.canvas = None
