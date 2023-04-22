@@ -6,29 +6,37 @@
       <p class="time">时间：{{ time }}</p>
       <p class="subtitle">基础数据</p>
       <div class="text">
-        <span class="data">营收：</span>
-        <span class="data">弹幕：</span>
-        <span class="data">密度：</span>
+        <span class="data">
+          营收：
+          <span class="num">{{ income }}</span>
+        </span>
+        <span class="data">
+          弹幕：
+          <span class="num">{{ danmakusCount }}</span>
+        </span>
+        <span class="data">
+          密度：
+          <span class="num">{{ density }}</span>
+        </span>
       </div>
       <div class="text">
-        <span class="data">礼物：</span>
-        <span class="data">航海：</span>
-        <span class="data">留言：</span>
-      </div>
-      <div class="text">
-        <span class="line1" style="left: 150px;">{{ totalIncome }}</span>
-        <span class="line1" style="left: 375px;">{{ danmakusCount }}</span>
-        <span class="line1" style="left: 600px;">{{ density }}</span>
-      </div>
-      <div class="text">
-        <span class="line2" style="left: 150px; color: #ffa8b4">{{ gift }}</span>
-        <span class="line2" style="left: 375px; color: #84d49b">{{ guard }}</span>
-        <span class="line2" style="left: 600px; color: #4ac2f6">{{ superchat }}</span>
-      </div>      
-      <img class="line" :src="income" />
+        <span class="data" style="display: inline;">
+          礼物：
+          <span class="num" style="color: #ffa8b4">{{ gift }}</span>
+        </span>
+        <span class="data">
+          航海：
+          <span class="num" style="color: #84d49b">{{ guard }}</span>
+        </span>
+        <span class="data">
+          留言：
+          <span class="num" style="color: #4ac2f6">{{ superchat }}</span>
+        </span>
+      </div>     
+      <img class="line" :src="incomeLine" />
       <p class="subtitle">弹幕词云</p>
-      <img style="margin: 10px 0 2px" :src="dm" />
-      <span style="font-size:24px;color: grey;float:right;display: inline;">*数据来源：api.ukamnads.icu</span>
+      <img style="margin: 10px 0 12px" :src="dm" />
+      <span class="source">*数据来源：api.ukamnads.icu</span>
       <img class="nanami" :src="nanami" />
     </div>
   </div>
@@ -38,10 +46,14 @@
 </script>
 
 <style>
+.outer {
+  background-color: #F6F6F6;
+}
+
 .container {
   width: calc(100% - 7em);
   margin: 100px 2em 2em;
-  padding: 1.5em 1.5em 7px;
+  padding: 1.5em 1.5em 17px;
   background-color: white;
   border-radius: 1em;
   font-weight: Bold;
@@ -67,6 +79,7 @@ h1 {
 .subtitle {
   font-size: 40px;
   margin: 0 0 5px;
+  color: #1D1D1F;
 }
 
 .text {
@@ -74,16 +87,8 @@ h1 {
   font-weight: Regular;
 }
 
-.line1 {
-  position: absolute;
-  top: 345px;
-  background-color: #00000000;
-}
-
-.line2 {
-  position: absolute;
-  top: 388px;
-  background-color: #00000000;
+.num {
+  display: inline;
 }
 
 .data + .data {
@@ -102,10 +107,18 @@ h1 {
   margin: 7px 0 12px;
 }
 
+.source {
+  font-weight: Regular;
+  font-size:24px;
+  color: grey;
+  float:right;
+  display: inline;
+}
+
 .nanami {
   position: absolute;
   top: 10px;
-  left: 700px;
+  left: 745px;
   width: 250px;
 }
 </style>

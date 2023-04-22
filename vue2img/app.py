@@ -36,7 +36,7 @@ class createApp:
         self.dom.paste(self.canvas, self.draw, 0, 0)
         # 保存画布
         if filepath is not None:
-            self.canvas.save(filepath)
+            self.canvas.save(filepath, format="png")
 
         return self
 

@@ -51,6 +51,8 @@ class ukamnads(Request):
         return messages
 
     def get_income(self, live: dict):
+        "营收"
+
         danmakus: List[dict] = live.get("data", {}).get("data", {}).get("danmakus", [])
         gift = guard = superchat = 0.0
         for dm in danmakus:
@@ -60,7 +62,10 @@ class ukamnads(Request):
                 guard += dm["price"]
             elif dm["type"] == 3:
                 superchat += dm["price"]
-        return gift, guard, superchat
+        gift = int(gift)
+        guard = int(guard)
+        superchat = int(superchat)
+        return gift, guard, superchat, gift + guard + superchat
 
     async def get_last_live_messages_all_in_one_string_by_uid(self, uid: int | str, junction: str = "/"):
         "异步获取拼接后直播弹幕文本"

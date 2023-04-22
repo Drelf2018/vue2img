@@ -253,7 +253,7 @@ class TextDOM(DOM):
 
     def __post_init__(self):
         self.position = "static"
-        self.display = "block"
+        self.display = "inline"
         self.max_width = self.parent.width
         self.__size = [0.0, 0.0]
         self.m0 = self.m1 = self.m2 = self.m3 = self.p0 = self.p1 = self.p2 = self.p3 = 0.0
