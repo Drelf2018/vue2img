@@ -3,9 +3,9 @@ from io import BytesIO
 from typing import List, Tuple, Union, overload
 
 import httpx
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw
 
-from .font import FontWeight
+from .manager import fontManager
 from .operation import radiusMask
 
 
@@ -98,7 +98,7 @@ class DOM:
     def inheritStyle(self) -> dict:
         return {
             "font-size": self.font_size,
-            "font-weight": self.style.get("font-weight", "Regular"),
+            "font-family": self.style.get("font-family", "msyh"),
             "color": self.style.get("color", "black"),
             "background-color": self.bgColor
         }
@@ -255,12 +255,11 @@ class TextDOM(DOM):
         self.position = "static"
         self.display = "inline"
         self.max_width = self.parent.width
-        self.__size = [0.0, 0.0]
         self.m0 = self.m1 = self.m2 = self.m3 = self.p0 = self.p1 = self.p2 = self.p3 = 0.0
 
         # 分割文本
-        fontpath = FontWeight(self.parent.style.get("font-weight", "Medium"))
-        self.font = ImageFont.truetype(fontpath, int(self.parent.font_size), encoding="utf-8")
+        fontpath = self.parent.style.get("font-family", "msyh")
+        self.font = fontManager[fontpath, int(self.parent.font_size)]
 
         sentences = []
         self.height = 0.0

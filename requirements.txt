@@ -1,0 +1,7 @@
+pillow
+httpx
+jieba
+numpy
+wordcloud
+lxml
+cssselect

@@ -6,8 +6,6 @@ import numpy as np
 from PIL import Image, ImageDraw
 from wordcloud import STOPWORDS, WordCloud
 
-from .font import FontWeight
-
 stopwords = os.path.abspath(
     os.path.join(
         os.path.dirname(__file__), "stopwords.txt"
@@ -36,7 +34,7 @@ def radiusMask(alpha: Image.Image, radius: Tuple[float], beta: float = 10):
     return alpha
 
 
-def word2cloud(danmakus: str, mask: Image.Image, content: Set[str] = set()) -> Image.Image:
+def word2cloud(danmakus: str, mask: Image.Image, font_path: str = None, content: Set[str] = set()) -> Image.Image:
     # jieba 分词
     jieba.add_word('睡啄')
     sentence = "/".join(jieba.cut(danmakus))
@@ -48,7 +46,7 @@ def word2cloud(danmakus: str, mask: Image.Image, content: Set[str] = set()) -> I
 
     # 词云
     return WordCloud(
-        font_path=FontWeight("Regular"),
+        font_path=font_path,
         prefer_horizontal=1,
         collocations=False,
         background_color=None,

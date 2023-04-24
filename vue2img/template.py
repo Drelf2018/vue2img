@@ -1,7 +1,7 @@
 import re
 from copy import deepcopy
 from io import TextIOWrapper
-from typing import Dict, List
+from typing import List
 
 from lxml import etree
 
