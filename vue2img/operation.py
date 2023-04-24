@@ -6,11 +6,7 @@ import numpy as np
 from PIL import Image, ImageDraw
 from wordcloud import STOPWORDS, WordCloud
 
-stopwords = os.path.abspath(
-    os.path.join(
-        os.path.dirname(__file__), "stopwords.txt"
-    )
-)
+from .stopwords import stopwords
 
 
 def radiusMask(alpha: Image.Image, radius: Tuple[float], beta: float = 10):
@@ -34,15 +30,11 @@ def radiusMask(alpha: Image.Image, radius: Tuple[float], beta: float = 10):
     return alpha
 
 
-def word2cloud(danmakus: str, mask: Image.Image, font_path: str = None, content: Set[str] = set()) -> Image.Image:
+def word2cloud(danmakus: str, mask: Image.Image, font_path: str = None, content: Set[str] = stopwords) -> Image.Image:
     # jieba 分词
     jieba.add_word('睡啄')
     sentence = "/".join(jieba.cut(danmakus))
     graph = np.array(mask)
-
-    # 停用词
-    if not content:
-        content = set(line.strip() for line in open(stopwords, "r", encoding="utf-8").readlines())
 
     # 词云
     return WordCloud(
