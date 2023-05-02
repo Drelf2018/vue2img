@@ -52,7 +52,7 @@ def getCuttedBody(nanami: Image.Image):
     "返回下半身具有透明的图片"
 
     w = int(nanami.width * 600 / nanami.height)
-    nanami = nanami.resize((w, 600), Image.ANTIALIAS)
+    nanami = nanami.resize((w, 600), Image.LANCZOS)
     body = nanami.crop((0, 0, w, 400))  # 不是跟下半身切割了吗 上半身透明度保留
 
     a = body.getchannel('A')

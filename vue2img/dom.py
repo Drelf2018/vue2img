@@ -238,8 +238,13 @@ class ImgDOM(DOM):
             img = Image.open(data)
         else:
             img = src
+
         self.height = img.height * self.width / img.width
-        self.img = img.resize((int(self.width), int(self.height)), Image.LANCZOS).convert("RGBA")
+        # 强制覆盖高度
+        height, = self.calc("height", self.height)
+        width = height * img.width / img.height
+
+        self.img = img.resize((int(width), int(height)), Image.LANCZOS).convert("RGBA")
 
     def paste(self, canvas: Image.Image, _: ImageDraw.ImageDraw, left: float, top: float):
         a = radiusMask(self.img.getchannel("A"), self.outside("border-radius"))

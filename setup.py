@@ -8,7 +8,7 @@ with open("requirements.txt", "r", encoding="utf8") as f:
 
 setup(
     name="vue2img",
-    version="0.0.5",
+    version="0.0.6",
     license="MIT",
     author="Drelf2018",
     author_email="drelf2018@outlook.com",
