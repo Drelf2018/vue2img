@@ -1,7 +1,7 @@
 import re
 from copy import deepcopy
 from io import TextIOWrapper
-from typing import List
+from typing import List, Union, Optional
 
 from lxml import etree
 
@@ -67,7 +67,7 @@ class template:
         # 根节点
         self.root = root
 
-    def __dfs(self, node: etree._Element | str, parent: DOM) -> None:
+    def __dfs(self, node: Union[etree._Element, str], parent: DOM, if_status: Optional[bool] = None) -> Optional[bool]:
         if isinstance(node, str):
             for var in varsPattern.findall(node):
                 var: str
@@ -75,24 +75,44 @@ class template:
             node = node.strip()
             if node != "":
                 parent.append(node)
-            return node
+                return None
+            return if_status
         elif isinstance(node, etree._Element):
             # 各种数据 例如 img 的 src
             attr = dict()
             for k, v in node.items():
                 if k not in ["style", "id", "class", self.stylesheet.key]:
-                    if k[0] == ":":
-                        attr[k[1:]] = self.data.get(v, "")
+                    value = self.data.get(v, "")
+                    if k == "v-if":
+                        if bool(value) == False:
+                            return False
+                        if_status = True
+                    elif k == "v-else-if":
+                        if if_status == True:
+                            return True
+                        elif if_status == False:
+                            if bool(value) == False:
+                                return False
+                            if_status = True
+                    elif k == "v-else":
+                        if if_status == True:
+                            return None
+                        elif if_status == False:
+                            if_status == None
+                    elif k[0] == ":":
+                        attr[k[1:]] = value
                     else:
                         attr[k] = v
 
             style = self.stylesheet.set(node, parent.inheritStyle)
             me = TYPES.get(node.tag, DOM)(node.tag, parent, style, attr)
-            
+
+            children_if_status = None
             for child in node.xpath("./*|text()"):
-                self.__dfs(child, me)
+                children_if_status = self.__dfs(child, me, children_if_status)
             
             parent.append(me)
+            return if_status
 
     def loads(self, vue: str):
         "直接读取模板字符串"
@@ -122,8 +142,9 @@ class template:
                 if isinstance(ele, etree._Element):
                     self.stylesheet.set(ele, calc_style)
         
+        if_status = None
         for ele in self.template.xpath("./*|text()"):
-            self.__dfs(ele, self.root)
+            if_status = self.__dfs(ele, self.root, if_status)
         
         return self.root
 
