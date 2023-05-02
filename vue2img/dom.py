@@ -100,7 +100,7 @@ class DOM:
             "font-size": self.font_size,
             "font-family": self.style.get("font-family", "msyh"),
             "color": self.style.get("color", "black"),
-            "background-color": self.bgColor
+            # "background-color": self.bgColor
         }
 
     @property
@@ -233,18 +233,31 @@ class ImgDOM(DOM):
         super().__post_init__()
         src = self.attribute.get("src")
         if isinstance(src, str):
-            res = httpx.get(self.src)
+            res = httpx.get(src)
             data = BytesIO(res.content)
             img = Image.open(data)
         else:
-            img = src
+            img: Image.Image = src
 
-        self.height = img.height * self.width / img.width
-        # 强制覆盖高度
-        height, = self.calc("height", self.height)
-        width = height * img.width / img.height
+        width, = self.calc("width", 0.0)
 
-        self.img = img.resize((int(width), int(height)), Image.LANCZOS).convert("RGBA")
+        if width == 0.0:  # 未设置宽 继承父元素宽
+            if self.height != 0.0:  # 设置了高 用高限制宽
+                self.resize(img, height=self.height)
+            else:
+                self.resize(img, width=self.width)
+        else:  # 限制了宽
+            self.resize(img, self.width, self.height)
+
+    def resize(self, img: Image.Image, width: float = 0.0, height: float = 0.0):
+        width = int(width) if width != 0.0 else int(height * img.width / img.height)
+        height = int(height) if height != 0.0 else int(width * img.height / img.width)
+        if img.width == width and img.height == height:
+            self.img = img
+        else:
+            self.img = img.resize((width, height), Image.LANCZOS).convert("RGBA")
+        self.width = self.img.width
+        self.height = self.img.height
 
     def paste(self, canvas: Image.Image, _: ImageDraw.ImageDraw, left: float, top: float):
         a = radiusMask(self.img.getchannel("A"), self.outside("border-radius"))

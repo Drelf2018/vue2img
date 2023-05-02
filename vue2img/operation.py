@@ -1,5 +1,6 @@
 import os
 from typing import Set, Tuple
+from PIL.Image import Image
 
 import jieba
 import numpy as np
@@ -48,7 +49,27 @@ def word2cloud(danmakus: str, mask: Image.Image, font_path: str = None, content:
     ).generate(sentence).to_image()
 
 
-def getCuttedBody(nanami: Image.Image):
+class BodyImage(Image.Image):
+    "适合中国饱饱的图片类"
+
+    @staticmethod
+    def from_image(image: Image.Image, alpha: Image.Image):
+        image.__class__ = BodyImage
+        image: BodyImage = image
+        image.setalpha(alpha)
+        return image
+
+    def setalpha(self, alpha: Image.Image):
+        self.__alpha = alpha
+
+    def getchannel(self, channel: int | str) -> Image.Image:
+        if channel == "A":
+            return self.__alpha
+        else:
+            return super().getchannel(channel)
+
+
+def getCuttedBody(nanami: Image.Image) -> BodyImage:
     "返回下半身具有透明的图片"
 
     w = int(nanami.width * 600 / nanami.height)
@@ -61,6 +82,5 @@ def getCuttedBody(nanami: Image.Image):
         for j in range(w):
             pix[j, i] = int((8-0.02*i) * pix[j, i])  # 下半部分透明度线性降低
 
-    body.putalpha(a)
+    return BodyImage.from_image(body, a)
 
-    return body
