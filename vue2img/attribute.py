@@ -1,4 +1,5 @@
 import re
+from inspect import isclass
 from typing import Dict, List, Tuple, Type
 
 
@@ -113,6 +114,16 @@ class Attribute:
 
         s = self.__class__.__name__
         return s[0].lower() + s[1:]
+    
+    @classmethod
+    def css(cls):
+        "css 属性名"
+
+        s = cls.__name__
+        for chn in s:
+            if "A" <= chn <= "Z":
+                s = s.replace(chn, "-"+chn.lower())
+        return s[1:]
 
     def __repr__(self) -> str:
         "打印"
@@ -172,7 +183,34 @@ class Attribute:
         self._value = calcToFloat(val, font_size, compared_value)
 
 
-class Attribute4(Attribute):
+class Attribute2(Attribute):
+    "2 值属性"
+
+    @property
+    def value(self) -> Tuple[float, float]:
+        return super().value
+
+    @property
+    def expressions(self) -> Tuple[str, str]:
+        return super().expressions
+
+    def completion(self, expr: List[str]) -> Tuple[str, str]:
+        "补全 2 个参数"
+
+        el = len(expr)
+        if el == 0:
+            return ("", "")
+        elif el == 1:
+            return tuple(expr * 2)
+        else:
+            return tuple(expr[:2])
+        
+    def transform(self, font_size: float = 16, compared_value: float = 0):
+        values = [calcToFloat(v, font_size, compared_value) for v in self.expressions]
+        self._value = tuple(values)
+
+
+class Attribute4(Attribute2):
     "4 值属性"
 
     @property
@@ -197,10 +235,6 @@ class Attribute4(Attribute):
             return (*expr, expr[1])
         else:
             return tuple(expr[:4])
-        
-    def transform(self, font_size: float = 16, compared_value: float = 0):
-        values = [calcToFloat(v, font_size, compared_value) for v in self.expressions]
-        self._value = tuple(values)
 
 
 class Attribute8(Attribute4):
@@ -222,6 +256,21 @@ class Attribute8(Attribute4):
             return super().completion(expr[:pos]) + super().completion(expr[pos+1:])
         else:
             return super().completion(expr) * 2
+
+
+class AttributeAll(Attribute):
+    "不定值属性"
+
+    @property
+    def value(self) -> Tuple[float, ...]:
+        return super().value
+
+    @property
+    def expressions(self) -> Tuple[str, ...]:
+        return super().expressions
+
+    def completion(self, expr: List[str]) -> Tuple[str, ...]:
+        return tuple(expr)
 
 
 @setting(compared=tuple())
@@ -296,6 +345,45 @@ class BorderRadius(Attribute8):
         self.topLeftX, self.topRightX, self.bottomRightX, self.bottomLeftX,self.topLeftY, self.topRightY, self.bottomRightY, self.bottomLeftY = self.value
 
 
+@setting("", compared=("fontSize", "width", "gridGap"))
+class GridTemplateColumns(AttributeAll):
+    def transform(self, font_size: float = 0.0, width: float = 0.0, gridGap: Tuple[float] = (0.0, 0.0)):
+        fr = 0
+        static = 0
+        values: List[str, float] = []
+        for val in self.expressions:
+            if val.endswith("fr"):
+                fr += float(val[:-2])
+                values.append(val)
+            else:
+                n = calcToFloat(val, font_size, width)
+                static += n
+                values.append(n)
+
+        self.gridTotal = len(self.expressions)
+        nw = width - static - (self.gridTotal - 1) * gridGap[0]
+
+        for i in range(len(values)):
+            v = values[i]
+            if v.endswith("fr"):
+                values[i] = nw * float(v[:-2]) / fr
+
+        self._value = tuple(values)
+        self.gridNum = 0
+
+    def next(self, gridNum: int):
+        return self.value[gridNum % self.gridTotal]
+
+
+@setting(compared=("fontSize", "width", "height"))
+class GridGap(Attribute2):
+    def transform(self, font_size: float = 16, width: float = 0.0, height: float = 0.0):
+        v0, v1 = self.expressions
+        self.row = calcToFloat(v0, font_size, width)
+        self.column = calcToFloat(v1, font_size, height)
+        self._value = (self.row, self.column)
+
+
 @setting("black", True)
 class Color(AttributeText): ...
 
@@ -326,29 +414,29 @@ class Top(Attribute): ...
 class Left(Attribute): ...
 
 
-ATTRIBUTE_TYPES: Dict[str, Type[Attribute]] = {
-    "font-size": FontSize,
-    "color": Color,
-    "margin": Margin,
-    "background-color": BackgroundColor,
-    "font-family": FontFamily,
-    "width": Width,
-    "padding": Padding,
-    "border-radius": BorderRadius,
-    "display": Display,
-    "height": Height,
-    "float": Float,
-    "position": Position,
-    "top": Top,
-    "left": Left,
-}
+def attribute_types(local: Dict[str, Type[Attribute]]):
+    ATTRIBUTE_TYPES = {}
+    for v in local.values():
+        v: Attribute
+        if not isclass(v):
+            continue
+        # 下面暂时不需要 除非在这里加了非 Attribute 类
+        # if not issubclass(v, Attribute):
+        #     continue
+        ATTRIBUTE_TYPES[v.css()] = v
+
+    def warpper(func):
+        def inner(cmd: str) -> Attribute:
+            "解析属性语句"
+
+            name, value = cmd.split(":")
+            attr = ATTRIBUTE_TYPES.get(name.strip())
+            if attr is None:
+                raise Exception(f"{name} 属性暂不支持")
+            return attr(value=value.strip())
+        return inner
+    return warpper
 
 
-def makeAttribute(cmd: str):
-    "解析属性语句"
-
-    name, value = cmd.split(":")
-    attr = ATTRIBUTE_TYPES.get(name.strip())
-    if attr is None:
-        raise Exception(f"{name} 属性暂不支持")
-    return attr(value=value.strip())
+@attribute_types(locals())
+def makeAttribute(cmd: str) -> Attribute: ...

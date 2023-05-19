@@ -1,4 +1,5 @@
 import re
+from inspect import iscoroutinefunction as isAsync
 from io import TextIOWrapper
 from typing import Dict, List, Optional, Union
 
@@ -7,7 +8,7 @@ from lxml.etree import _Element as Element
 
 from .dom import DOM, BodyDOM, ImgDOM, Rectangle, TextDOM, makeDOM
 from .style import Style
-from .util import Travel, bfs, dfs
+from .util import Travel, bfs, dfs, sync
 
 varsPattern = re.compile(r"{{(.*?)}}")
 
@@ -21,7 +22,10 @@ class Template:
     def __init__(self, vue: str = None, fp: TextIOWrapper = None, path: str = None, *args, **kwargs):
         "自动加载 `data()` 数据"
 
-        self.__data = self.data(*args, **kwargs)
+        if isAsync(self.data):
+            self.__data = sync(self.data(*args, **kwargs))
+        else:
+            self.__data = self.data(*args, **kwargs)
         self.__key = self.get("key", "dom")
         self.__doms: Dict[str, DOM] = dict()
 
@@ -189,9 +193,13 @@ class Template:
                 else:
                     Rectangle.init(dom)
 
+                if parent and not dom.style.position.equal("absolute"):
+                    dom.normal_index = parent.normal_total
+                    parent.normal_total += 1
+
             @staticmethod
             def postorder(dom: DOM, depth: int, parent: DOM) -> Optional[bool]:
-                "设置矩形偏移"
+                "设置矩形偏移 为子节点编号"
 
                 if parent is not None:
                     parent.content.append(dom.content)

@@ -35,16 +35,17 @@ class Rectangle:
 
     def __post_init__(self):
         if self.dom is not None:
+            style = self.dom.style
+
             self.lastMargin = 0.0  # 最后一个子元素的下 margin
-            self.margin = self.dom.style.margin
-            self.padding = self.dom.style.padding
-            self.position = self.dom.style.position
+            self.margin = style.margin
+            self.padding = style.padding
+            self.position = style.position
 
             self.__x = self.__y = None
             if self.position.equal("absolute"):
                 self.__x = self.left
                 self.__y = self.top
-                self.left = self.top = 0
 
         self.height_read_only = self.height
         self.height = 0.0
@@ -140,6 +141,32 @@ class Rectangle:
 
 class DOM:
     tagStyle: Style = Style()
+    
+    def __init__(self, inner_style: Style = Style()):
+        # 节点
+        self.childNodes: List[DOM] = list()
+        self.parentNode: Optional[DOM] = None
+        self.pending_nodes: List[DOM] = list()
+        self.next_node: Optional[DOM] = None
+        self.previous_node: Optional[DOM] = None
+        
+        # 属性
+        self.attributes: Dict[str, str] = dict()
+        
+        # 在父节点的非 absolute 子节点中序号
+        self.normal_index = -1
+        # 子元素中非 absolute 子节点个数
+        self.normal_total = 0
+        
+        # 内容区位置矩形
+        self.content: Optional[Rectangle] = None
+
+        # 样式
+        self.inner_style = inner_style
+        self.id_style = Style()
+        self.class_style = Style()
+        self.tag_style = Style()
+        self.__ComputedStyle = None
 
     @property
     def tagName(self):
@@ -150,6 +177,34 @@ class DOM:
         "子节点"
 
         return filter(lambda dom: dom.tagName != "text", self.childNodes)
+
+    @property
+    def nextSibling(self):
+        "下一个兄弟节点"
+
+        if self.parentNode is None:
+            return None
+        if self.next_node is None:
+            childList = self.parentNode.childNodes
+            pos = childList.index(self)
+            if pos == len(childList) - 1:
+                return None
+            self.next_node = childList[pos + 1]
+        return self.next_node
+
+    @property
+    def previousSibling(self):
+        "前一个兄弟节点"
+
+        if self.parentNode is None:
+            return None
+        if self.previous_node is None:
+            childList = self.parentNode.childNodes
+            pos = childList.index(self)
+            if pos == 0:
+                return None
+            self.previous_node = childList[pos - 1]
+        return self.previous_node
 
     @property
     def style(self):
@@ -165,34 +220,15 @@ class DOM:
             self.__ComputedStyle = self.setComputedStyle()
         return self.__ComputedStyle
 
-    def __init__(self, inner_style: Style = Style()):
-        # 节点
-        self.childNodes: List[DOM] = list()
-        self.parentNode: Optional[DOM] = None
-        self.pending_nodes: List[DOM] = list()
-        
-        # 属性
-        self.attributes: Dict[str, str] = dict()
-        
-        # 内容区位置矩形
-        self.content: Optional[Rectangle] = None
-
-        # 样式
-        self.inner_style = inner_style
-        self.id_style = Style()
-        self.class_style = Style()
-        self.tag_style = Style()
-        self.__ComputedStyle = None
-
     def setComputedStyle(self) -> Style:
         "计算最终样式"
 
-        return self.tagStyle.update(
+        return deepcopy(self.tagStyle).update(
             self.tag_style,
             self.class_style,
             self.id_style,
             self.inner_style
-        ).inherit(self.parentNode.style)
+        ).inherit(self.parentNode.style, self.parentNode.normal_total)
 
     def __repr__(self):
         attr_text = ""
@@ -200,7 +236,7 @@ class DOM:
             attr_text += f" {k}"
             if v != "":
                 attr_text += f"={v}"
-        return f"<{self.tagName}{attr_text}>"
+        return f"<{self.tagName}{attr_text} index={self.normal_index}>"
 
     def contain(self, *keys: Tuple[str]):
         "返回属性"
@@ -293,7 +329,13 @@ class ImgDOM(DOM):
         self.img = img
 
         self.resize(*self.style.values("width", "height"))
-        self.content = Rectangle(dom=self, width=self.img.width, height=self.img.height)
+        self.content = Rectangle(
+            dom=self,
+            top=self.style.top.value,
+            left=self.style.left.value,
+            width=self.img.width,
+            height=self.img.height
+        )
 
     def paste(self, canvas: Image.Image, _: ImageDraw.ImageDraw):
         a = radiusMask(self.img.getchannel("A"), self.style.borderRadius.value[:4])
@@ -373,10 +415,14 @@ class BodyDOM(DOM):
         return self.inner_style
 
 
+class TemplateDOM(BodyDOM): ...
+
+
 class DivDOM(DOM): ...
 
 
-class SpanDOM(DOM): ...
+class SpanDOM(DOM):
+    tagStyle = SpanStyle()
 
 
 class PDOM(DOM):
@@ -387,15 +433,16 @@ class H1DOM(DOM):
     tagStyle: H1Style = H1Style()
 
 
-DOM_TYPES: Dict[str, Type[DOM]] = {
-    "img": ImgDOM,
-    "template": BodyDOM,
-    "div": DivDOM,
-    "span": SpanDOM,
-    "p": PDOM,
-    "h1": H1DOM,
-}
+def dom_types(local: Dict[str, Type[DOM]]):
+    DOM_TYPES = {k.replace("DOM", "").lower(): v for k, v in local.items() if k.endswith("DOM")}
+    def warpper(func):
+        def inner(tagName: str, inner_style: Style = None):
+            "通过 tagName 找对应类"
+
+            return DOM_TYPES.get(tagName, DOM)(inner_style)
+        return inner
+    return warpper
 
 
-def makeDOM(tagName: str, inner_style: Style = None):
-    return DOM_TYPES.get(tagName, DOM)(inner_style)
+@dom_types(locals())
+def makeDOM(tagName: str, inner_style: Style = None) -> DOM: ...

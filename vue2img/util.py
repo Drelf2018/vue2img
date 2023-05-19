@@ -1,5 +1,6 @@
+import asyncio
 from inspect import isfunction
-from typing import Callable, List, Optional, Set, TypeVar
+from typing import Callable, Coroutine, List, Optional, Set, TypeVar
 
 from .dom import DOM
 
@@ -125,3 +126,28 @@ def dfs(
             run(root)
         return run
     return warpper
+
+
+# 以下偷自 bilibili-api-python
+
+def __ensure_event_loop() -> None:
+    try:
+        asyncio.get_event_loop()
+
+    except:
+        asyncio.set_event_loop(asyncio.new_event_loop())
+
+
+def sync(coroutine: Coroutine):
+    """
+    同步执行异步函数，使用可参考 [同步执行异步代码](https://nemo2011.github.io/bilibili-api/#/sync-executor)
+
+    Args:
+        coroutine (Coroutine): 异步函数
+
+    Returns:
+        该异步函数的返回值
+    """
+    __ensure_event_loop()
+    loop = asyncio.get_event_loop()
+    return loop.run_until_complete(coroutine)

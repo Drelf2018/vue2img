@@ -25,6 +25,8 @@ class Style:
     fontFamily: FontFamily = field(default_factory=FontFamily)
     borderRadius: BorderRadius = field(default_factory=BorderRadius)
     backgroundColor: BackgroundColor = field(default_factory=BackgroundColor)
+    gridGap: GridGap = field(default_factory=GridGap)
+    gridTemplateColumns: GridTemplateColumns = field(default_factory=GridTemplateColumns)
 
     @property
     def attributs(self):
@@ -92,24 +94,28 @@ class Style:
             return value
         return self[key]
 
-    def values(self, *keys: str) -> Tuple[int, ...]:
+    def values(self, *keys: str, normal_index: int = -1):
         "获取多个属性值"
 
         vals = []
         for key in keys:
             if isinstance(key, str):
                 if key.startswith("parent."):
-                    key = key.replace("parent.", "")
+                    vals.append(key.replace("parent.", ""))
                 elif key == "side":
                     vals.append(self.margin.side + self.padding.side)
-                    continue
+                elif key == "width":
+                    if self.display.equal("grid") and normal_index != -1:
+                        vals.append(self.gridTemplateColumns.next(normal_index))
+                    else:
+                        vals.append(self.width.value)
                 elif self[key] is not None:
                     vals.append(self[key].value)
-                    continue
-            vals.append(key)
+            else:
+                vals.append(key)
         return tuple(vals)
 
-    def inherit(self, parent_style: "Style"):
+    def inherit(self, parent_style: "Style", normal_index: int):
         "继承父属性"
 
         for name, attr in self.inheritable:
@@ -118,8 +124,12 @@ class Style:
         if self.fontSize.value is None:
             self.fontSize.transform(parent_style.fontSize.value)
 
+        if self.position.equal("absolute"):
+            normal_index = -1
+
         for name, attr in self.prewidth:
-            args = parent_style.values(*self.values(*attr.compared))
+            args = self.values(normal_index=-1, *attr.compared)
+            args = parent_style.values(normal_index=normal_index, *args)
             attr.transform(*args)
 
         return self
@@ -127,15 +137,14 @@ class Style:
     def update(self, *latests: "Style"):
         "叠加属性值"
 
-        style = deepcopy(self)
         for latest in latests:
             for name, attr in latest.attributs:
                 if attr.unset:
                     continue
-                if style[name].important and not attr.important:
+                if self[name].important and not attr.important:
                     continue
-                style[name] = attr
-        return style
+                self[name] = attr
+        return self
     
     @classmethod
     def parse_style(cls, s: str):
@@ -148,6 +157,11 @@ class Style:
                 if attr is not None:
                     style[attr.name] = attr
         return style
+
+
+@dataclass
+class SpanStyle(Style):
+    display: Display = Display("inline")
 
 
 @dataclass
