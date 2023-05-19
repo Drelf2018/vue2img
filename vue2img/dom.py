@@ -1,237 +1,288 @@
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from io import BytesIO
-from typing import List, Tuple, Union, overload
+from typing import Dict, List, Optional, Tuple, Type, Union
 
 import httpx
 from PIL import Image, ImageDraw
 
 from .manager import fontManager
 from .operation import radiusMask
+from .style import *
 
 
 @dataclass
-class DOM:
-    tagName: str
-    parent: "DOM" = None
-    style: dict = field(default_factory=dict)
-    attribute: dict = field(default_factory=dict)
+class Rectangle:
+    """
+    节点矩形
+
+    x, y: 左上角绝对坐标
+
+    top, left: 相对原始位置的偏移
+
+    width, height: 矩形长宽
+
+    offsetX, offsetY: 左上角原本位置相对父元素左上角偏移量
+    
+    也就是正常情况下的坐标点 如果是 relative 在贴最终位置的时候要用这个点加 top, left
+    """
+
+    dom: "DOM" = None
+
+    top: float = 0.0
+    left: float = 0.0
+    width: float = 0.0
+    height: float = None
 
     def __post_init__(self):
-        "初始化"
+        if self.dom is not None:
+            self.lastMargin = 0.0  # 最后一个子元素的下 margin
+            self.margin = self.dom.style.margin
+            self.padding = self.dom.style.padding
+            self.position = self.dom.style.position
 
-        # 梓元素
-        self.__children: List[Union["DOM", str]] = list()
+            self.__x = self.__y = None
+            if self.position.equal("absolute"):
+                self.__x = self.left
+                self.__y = self.top
+                self.left = self.top = 0
 
-        # 定位
-        self.position = self.style.get("position", "static")
-        self.display = self.style.get("display", "block")
-        self.__size = [0.0, 0.0]
-
-        # 基础属性 先计算字号再计算宽度
-        self.font_size, = self.calc("font-size")
-        self.width, = self.calc("width")
-        self.height, = self.calc("height", 0.0)
-        self.bgColor = self.style.get("background-color", "rgba(0,0,0,0)")
-
-        # 计算 margin padding
-        self.m0, self.m1, self.m2, self.m3 = self.outside("margin")
-        self.p0, self.p1, self.p2, self.p3 = self.outside("padding")
-
-        # 定位子元素
-        self.cx, self.cy = 0.0, 0.0
-
-    @overload
-    def append(self, text: str) -> None: 
-        "尾部插入字符"
-
-    @overload
-    def append(self, element: "DOM") -> None:
-        "尾部插入子节点"
-
-    def append(self, child: Union["DOM", str]):
-        "尾部插入子元素"
-
-        if isinstance(child, str):
-            child = TextDOM(parent=self, text=child)
-        else:
-            # 修正尺寸
-            child.height += child.cy
-
-            if child.tagName == "span":
-                child.width = 0.0
-                for _, dom in child.forEach("#text"):
-                    child.width += dom.width
-
-        if child.position != "absolute":
-            height = child.m0 + child.p0 + child.height + child.p2 + child.m2
-            if child.display.startswith("inline"):
-                child.setSize(self.cx, self.height)
-                self.cx += child.m3 + child.p3 + child.width + child.p1 + child.m1
-                self.cy = max(height, self.cy)
-            else:
-                if self.cy != 0.0:
-                    self.height += self.cy
-                    self.cy = 0.0
-                
-                overlap = min(child.m0, self.lastMargin)
-                child.setSize(0, self.height - overlap)
-                self.height += height - overlap
-                self.cx = 0.0
-
-        self.__children.append(child)
+        self.height_read_only = self.height
+        self.height = 0.0
 
     @property
-    def children(self):
-        return self.__children
+    def finalHeight(self):
+        "最终高度 如果有初始值则不返回自适应出的高度"
+
+        if self.height_read_only is not None:
+            return self.height_read_only
+        return self.height
 
     @property
-    def lastMargin(self) -> float:
-        if len(self.__children) == 0:
+    def background(self) -> "Rectangle":
+        "背景矩形 需要考虑 padding"
+
+        return Rectangle(
+            top=self.y - self.padding.top,
+            left=self.x - self.padding.left,
+            width=self.width + self.padding.side,
+            height=self.finalHeight + self.padding.tiandi
+        )
+
+    @property
+    def xy(self):
+        "什么希侑"
+
+        return int(self.x), int(self.y)
+
+    @property
+    def x(self):
+        if self.dom is None:
+            return self.left
+        if self.dom.parentNode is None:
             return 0.0
-        else:
-            ele = self.__children[-1]
-            if ele.display.startswith("inline"):
-                return 0.0
-            return ele.m2
+        if self.__x is None:
+            self.__x = self.dom.parentNode.content.x + self.offsetX + self.left
+        return self.__x
 
     @property
-    def inheritStyle(self) -> dict:
-        return {
-            "font-size": self.font_size,
-            "font-family": self.style.get("font-family", "msyh"),
-            "color": self.style.get("color", "black"),
-            # "background-color": self.bgColor
-        }
+    def y(self):
+        if self.dom is None:
+            return self.top
+        if self.dom.parentNode is None:
+            return 0.0
+        if self.__y is None:
+            self.__y = self.dom.parentNode.content.y + self.offsetY + self.top
+        return self.__y
 
     @property
     def size(self):
-        return tuple(self.__size)
-    
-    def setSize(self, left: float = 0.0, top: float = 0.0):
-        self.__size = [left, top]
+        return int(self.width), int(self.finalHeight)
 
-    def forEach(self, tagName: str = "*"):
-        "遍历"
+    @classmethod
+    def init(cls, dom: "DOM"):
+        "初始化矩形"
 
-        return enumerate([child for child in self.__children if tagName == "*" or child.tagName == tagName])
-    
-    def tree(self, depth: int = 0):
-        "打印树形结构"
+        # 这里调用了 `dom.style` 实际上起到了生成最终样式的作用
+        # 详见 dom.style 定义处
+        top, left, width, height = dom.style.values("top", "left", "width", "height")
+        dom.content = cls(
+            dom=dom,
+            top=top,
+            left=left,
+            width=width,
+            height=height
+        )
 
-        print(" " * depth + f"DOM(tagName='{self.tagName}')")
-        for _, child in self.forEach():
-            if isinstance(child, str):
-                print(" " * (depth + 1) + child)
-            else:
-                child.tree(depth + 1)
+    def set_offset(self, offsetX: float = 0.0, offsetY: float = 0.0):
+        "设置元素偏移"
 
-    def toFloat(self, key: str = "", value: str = "") -> float:
-        "转换单位 例如 px em %"
+        self.offsetX = offsetX
+        self.offsetY = offsetY
+        return self
 
-        if value.endswith("px"):
-            return float(value[:-2])
-        if value.endswith("%"):
-            if key == "width":
-                return float(value[:-1]) * self.parent.width / 100
-            elif key == "font-size":
-                return float(value[:-1]) * self.parent.font_size / 100
-            else:
-                return float(value[:-1]) * self.width / 100
-        elif value.endswith("em"):
-            if key == "font-size":
-                return float(value[:-2]) * self.parent.font_size
-            else:
-                return float(value[:-2]) * self.font_size
-        elif value == "auto":
-            return self.parent.font_size if key == "font-size" else self.parent.width
-        return float(value)
+    def heighten(self, height: float):
+        "自适应高度"
 
-    def calc(self, key: str, value: str = "auto") -> Tuple[float, ...]:
-        "计算 style 表达式"
+        self.height += height
 
-        alpha = self.style.get(key, value)
-        alpha = str(alpha)  # 强制转换
+    def append(self, child: "Rectangle"):
+        "添加子元素矩形"
 
-        args = alpha.replace("(", " ( ").replace(")", " ) ").split(" ")
-        arg = ""
-        expr = list()
-        inner = 0
+        # 参考: https://blog.csdn.net/iefreer/article/details/50708348
+        if child.position.equal("absolute"):
+            return
 
-        for val in args:
-            # 判空
-            if val == "calc" or val == "":
-                continue
+        overlap = max(0, child.margin.top - self.lastMargin)  # margin 重叠
+        child.set_offset(child.margin.left + child.padding.left, self.height + overlap + child.padding.top)
+        self.heighten(overlap + child.padding.tiandi + child.finalHeight + child.margin.bottom)
+        self.lastMargin = child.margin.bottom
 
-            # 计算括号层数
-            if val.startswith("("):
-                inner += 1
-            elif val.endswith(")"):
-                inner -= 1
 
-            # 组合算子
-            if val in ["+", "-", "*", "/", "(", ")"]:
-                arg += val
-            else:
-                arg += str(self.toFloat(key, val))
+class DOM:
+    tagStyle: Style = Style()
 
-            # 在括号最外层则添加
-            if inner == 0:
-                expr.append(arg)
-                arg = ""
+    @property
+    def tagName(self):
+        return self.__class__.__name__.replace("DOM", "").lower()
 
-        return tuple(map(eval, expr))
+    @property
+    def children(self):
+        "子节点"
 
-    def outside(self, key: str) -> Tuple[float, float, float, float]:
-        "计算外围数据 例如 margin padding border-radius"
+        return filter(lambda dom: dom.tagName != "text", self.childNodes)
 
-        marginAll = self.calc(key, "0px")
-        marginLen = len(marginAll)
+    @property
+    def style(self):
+        """
+        获取计算样式
+        
+        初始状态 `self.__ComputedStyle is None`
 
-        if marginLen == 1:
-            return marginAll * 4
-        elif marginLen == 2:
-            return marginAll * 2
-        elif marginLen == 3:
-            return (*marginAll, marginAll[1])
-        return marginAll
-
-    def paste(self, canvas: Image.Image, draw: ImageDraw.ImageDraw, left: float, top: float):
-        """将内容粘贴在画布上
-
-        left: 内容区相对图片左边距
-        top: 内容区相对图片上边距
+        所有样式叠加完成后调用就会计算最终样式
         """
 
-        # 强制覆盖高度
-        height, = self.calc("height", self.height)
+        if self.__ComputedStyle is None:
+            self.__ComputedStyle = self.setComputedStyle()
+        return self.__ComputedStyle
+
+    def __init__(self, inner_style: Style = Style()):
+        # 节点
+        self.childNodes: List[DOM] = list()
+        self.parentNode: Optional[DOM] = None
+        self.pending_nodes: List[DOM] = list()
+        
+        # 属性
+        self.attributes: Dict[str, str] = dict()
+        
+        # 内容区位置矩形
+        self.content: Optional[Rectangle] = None
+
+        # 样式
+        self.inner_style = inner_style
+        self.id_style = Style()
+        self.class_style = Style()
+        self.tag_style = Style()
+        self.__ComputedStyle = None
+
+    def setComputedStyle(self) -> Style:
+        "计算最终样式"
+
+        return self.tagStyle.update(
+            self.tag_style,
+            self.class_style,
+            self.id_style,
+            self.inner_style
+        ).inherit(self.parentNode.style)
+
+    def __repr__(self):
+        attr_text = ""
+        for k, v in self.attributes.items():
+            attr_text += f" {k}"
+            if v != "":
+                attr_text += f"={v}"
+        return f"<{self.tagName}{attr_text}>"
+
+    def contain(self, *keys: Tuple[str]):
+        "返回属性"
+
+        for key in keys:
+            if key in self.attributes:
+                return self.attributes[key]
+        return None
+
+    def insert(self, node: "DOM"):
+        "简易插入"
+
+        if node is None:
+            return
+        node.parentNode = self
+        self.childNodes.append(node)
+
+    def insert_true_node(self, latest_node: Optional["DOM"] = None):
+        """
+        遍历判断 插入真等待节点 待部署为空则返回
+        
+        latest_node: v-else 节点
+        """
+
+        if len(self.pending_nodes) == 0:
+            return
+        node0 = self.pending_nodes.pop(0)
+        if bool(node0.attributes["v-if"]):
+            return self.insert(node0)
+        while len(self.pending_nodes):
+            node = self.pending_nodes.pop(0)
+            if bool(node.attributes["v-else-if"]):
+                return self.insert(node)
+        self.insert(latest_node)
+
+    def pending(self, node: "DOM"):
+        "尾部插入等待节点"
+
+        self.pending_nodes.append(node)
+
+    def append(self, child: Union["DOM", str]):
+        """
+        尾部插入子元素
+        
+        插入新元素前自动检查是否还有剩余待插入元素
+
+        即自动运行 `self.insert_true_node()`
+        """
+
+        self.insert_true_node()
+
+        if isinstance(child, str):
+            self.childNodes.append(TextDOM(self, child))
+        elif isinstance(child, DOM):
+            self.insert(child)
+
+    def paste(self, canvas: Image.Image, draw: ImageDraw.ImageDraw):
+        "将内容粘贴在画布上"
 
         # 背景颜色
-        bg = Image.new('RGBA', (int(self.p3 + self.width + self.p1), int(self.p0 + height + self.p2)), self.bgColor)
-        a = radiusMask(bg.getchannel("A"), self.outside("border-radius"))
-        canvas.paste(bg, (int(left - self.p3), int(top - self.p0)), a)
-
-        # 内容
-        for _, child in self.forEach():
-            x, y = child.size
-            cleft, = child.calc("left", 0.0)
-            ctop, = child.calc("top", 0.0)
-            if child.position == "absolute":
-                ...
-            elif child.position == "relative":
-                cleft += left + x
-                ctop += top + y
-            else:
-                cleft = left + x
-                ctop = top + y
-            child.paste(canvas, draw, cleft + child.m3 + child.p3, ctop + child.m0 + child.p0)
+        background = self.content.background
+        bg = Image.new("RGBA", background.size, self.style.backgroundColor.value)
+        # 虽然 borderRadius 已经是 8 值属性了 但是 radiusMask 目前只支持四个参数 问就是我懒
+        a = radiusMask(bg.getchannel("A"), self.style.borderRadius.value[:4])
+        canvas.paste(bg, background.xy, mask=a)
 
 
 class ImgDOM(DOM):
-    tagName: str = "img"
+    "图片节点"
 
-    def __post_init__(self):
-        super().__post_init__()
-        src = self.attribute.get("src")
+    def resize(self, width: int, height: Optional[int] = None):
+        "缩放图片"
+
+        height = int(height) if height is not None else int(width * self.img.height / self.img.width)
+        width = int(width)
+        if self.img.width != width or self.img.height != height:
+            self.img = self.img.resize((width, height), Image.LANCZOS).convert("RGBA")
+
+    def fetch_image(self):
+        "获取图片"
+
+        src = self.attributes.get("src")
         if isinstance(src, str):
             res = httpx.get(src)
             data = BytesIO(res.content)
@@ -239,45 +290,34 @@ class ImgDOM(DOM):
         else:
             img: Image.Image = src
 
-        width, = self.calc("width", 0.0)
+        self.img = img
 
-        if width == 0.0:  # 未设置宽 继承父元素宽
-            if self.height != 0.0:  # 设置了高 用高限制宽
-                self.resize(img, height=self.height)
-            else:
-                self.resize(img, width=self.width)
-        else:  # 限制了宽
-            self.resize(img, self.width, self.height)
+        self.resize(*self.style.values("width", "height"))
+        self.content = Rectangle(dom=self, width=self.img.width, height=self.img.height)
 
-    def resize(self, img: Image.Image, width: float = 0.0, height: float = 0.0):
-        width = int(width) if width != 0.0 else int(height * img.width / img.height)
-        height = int(height) if height != 0.0 else int(width * img.height / img.width)
-        if img.width == width and img.height == height:
-            self.img = img
-        else:
-            self.img = img.resize((width, height), Image.LANCZOS).convert("RGBA")
-        self.width = self.img.width
-        self.height = self.img.height
-
-    def paste(self, canvas: Image.Image, _: ImageDraw.ImageDraw, left: float, top: float):
-        a = radiusMask(self.img.getchannel("A"), self.outside("border-radius"))
-        canvas.paste(self.img, (int(left), int(top)), a)
+    def paste(self, canvas: Image.Image, _: ImageDraw.ImageDraw):
+        a = radiusMask(self.img.getchannel("A"), self.style.borderRadius.value[:4])
+        canvas.paste(self.img, self.content.xy, a)
 
 
-@dataclass
 class TextDOM(DOM):
-    text: str = ""
-    tagName: str = "#text"
+    "文字节点"
 
-    def __post_init__(self):
-        self.position = "static"
-        self.display = "inline"
-        self.max_width = self.parent.width
-        self.m0 = self.m1 = self.m2 = self.m3 = self.p0 = self.p1 = self.p2 = self.p3 = 0.0
+    def __init__(self, parentNode: DOM, text: str = ""):
+        super().__init__()
+        self.text = text
+        self.parentNode = parentNode
+
+    def set_size(self):
+        "根据最大限制宽度切割文本"
+
+        # 获取书写区域
+        self.inner = self.parentNode.content
+        self.max_width = self.inner.width
 
         # 分割文本
-        fontpath = self.parent.style.get("font-family", "msyh")
-        self.font = fontManager[fontpath, int(self.parent.font_size)]
+        fontpath = self.parentNode.style.fontFamily.value
+        self.font = fontManager[fontpath, int(self.parentNode.style.fontSize.value)]
 
         sentences = []
         self.height = 0.0
@@ -303,14 +343,59 @@ class TextDOM(DOM):
         if len(sentences) == 1:
             self.width = self.font.getlength(self.text)
         else:
-            self.width = self.parent.width
+            self.width = self.max_width
+        
+        self.content = Rectangle(dom=self, width=self.width, height=self.height)
 
-    def paste(self, _: Image.Image, draw: ImageDraw.ImageDraw, left: float, top: float):
-        if self.parent.style.get("float") == "right":
-            left += self.max_width - self.width
-        draw.text((left, top), self.text, self.parent.style.get("color", "black"), self.font)
+    @property
+    def size(self):
+        "获取大小"
+
+        return int(self.width), int(self.height)
+
+    def __repr__(self):
+        return self.text
+
+    def paste(self, _: Image.Image, draw: ImageDraw.ImageDraw):
+        left, top = self.content.xy
+        # if self.parentNode.style.float.equal("right"):
+        #     left += self.max_width - self.width
+        draw.text((left, top), self.text, self.parentNode.style.color.value, self.font)
 
 
-TYPES = {
+class BodyDOM(DOM):
+    def setComputedStyle(self) -> Style:
+        self.inner_style.fontSize.transform(16)
+        self.inner_style.width.transform(self.inner_style.fontSize.value)
+        for _, attr in self.inner_style.attributs:
+            if attr.unset:
+                attr.init().transform(*self.inner_style.values(*attr.compared))
+        return self.inner_style
+
+
+class DivDOM(DOM): ...
+
+
+class SpanDOM(DOM): ...
+
+
+class PDOM(DOM):
+    tagStyle: PStyle = PStyle()
+
+
+class H1DOM(DOM):
+    tagStyle: H1Style = H1Style()
+
+
+DOM_TYPES: Dict[str, Type[DOM]] = {
     "img": ImgDOM,
+    "template": BodyDOM,
+    "div": DivDOM,
+    "span": SpanDOM,
+    "p": PDOM,
+    "h1": H1DOM,
 }
+
+
+def makeDOM(tagName: str, inner_style: Style = None):
+    return DOM_TYPES.get(tagName, DOM)(inner_style)

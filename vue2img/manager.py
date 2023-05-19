@@ -1,4 +1,4 @@
-from typing import Tuple, Dict
+from typing import Dict, Tuple
 
 from PIL import ImageFont
 
@@ -10,8 +10,10 @@ class FontManager:
         if key not in self.__fonts:
             path, size = key
             path = path.replace("'", "").replace('"', '')
-            self.__fonts[key] = ImageFont.truetype(path, size, encoding="utf-8")
+            try:
+                self.__fonts[key] = ImageFont.truetype(path, size, encoding="utf-8")
+            except Exception as e:
+                raise Exception(f'{e}: "{path}"')
         return self.__fonts[key]
-    
 
 fontManager = FontManager()

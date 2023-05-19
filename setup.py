@@ -8,7 +8,7 @@ with open("requirements.txt", "r", encoding="utf8") as f:
 
 setup(
     name="vue2img",
-    version="0.0.8",
+    version="0.5.1",
     license="MIT",
     author="Drelf2018",
     author_email="drelf2018@outlook.com",
@@ -27,5 +27,5 @@ setup(
         "Operating System :: Microsoft :: Windows",
     ],
     url="https://github.com/Drelf2018/vue2img",
-    python_requires=">=3.8",
+    python_requires=">=3.7.3",
 )

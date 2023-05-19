@@ -1,6 +1,4 @@
-import os
-from typing import Set, Tuple
-from PIL.Image import Image
+from typing import Set, Tuple, Union
 
 import jieba
 import numpy as np
@@ -10,7 +8,7 @@ from wordcloud import STOPWORDS, WordCloud
 from .stopwords import stopwords
 
 
-def radiusMask(alpha: Image.Image, radius: Tuple[float], beta: float = 10):
+def radiusMask(alpha: Image.Image, radius: Tuple[float, ...], beta: float = 10):
     "给遮罩层加圆角"
 
     w, h = alpha.size
@@ -62,7 +60,7 @@ class BodyImage(Image.Image):
     def setalpha(self, alpha: Image.Image):
         self.__alpha = alpha
 
-    def getchannel(self, channel: int | str) -> Image.Image:
+    def getchannel(self, channel: Union[int, str]) -> Image.Image:
         if channel == "A":
             return self.__alpha
         else:
