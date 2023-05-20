@@ -50,7 +50,6 @@ class createApp:
 
         return self
 
-    @property
     def show(self):
         "展示图片"
 
