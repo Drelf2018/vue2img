@@ -10,23 +10,26 @@ stylePattern = re.compile(r"[^:|\n|;]+:[^;]+")
 @dataclass
 class Style:
     "样式表"
-
-    top: Top = field(default_factory=Top)
-    left: Left = field(default_factory=Left)
-    color: Color = field(default_factory=Color)
-    float: Float = field(default_factory=Float)
-    width: Width = field(default_factory=Width)
-    margin: Margin = field(default_factory=Margin)
-    height: Height = field(default_factory=Height)
-    padding: Padding = field(default_factory=Padding)
-    display: Display = field(default_factory=Display)
+    
     fontSize: FontSize = field(default_factory=FontSize)
-    position: Position = field(default_factory=Position)
-    fontFamily: FontFamily = field(default_factory=FontFamily)
+    margin: Margin = field(default_factory=Margin)
+    padding: Padding = field(default_factory=Padding)
+    width: Width = field(default_factory=Width)
+    
+    top: Top = field(default_factory=Top)
+    left: Left = field(default_factory=Left)    
+    height: Height = field(default_factory=Height)
     borderRadius: BorderRadius = field(default_factory=BorderRadius)
-    backgroundColor: BackgroundColor = field(default_factory=BackgroundColor)
+    
     gridGap: GridGap = field(default_factory=GridGap)
     gridTemplateColumns: GridTemplateColumns = field(default_factory=GridTemplateColumns)
+    
+    color: Color = field(default_factory=Color)
+    float: Float = field(default_factory=Float)
+    display: Display = field(default_factory=Display)
+    position: Position = field(default_factory=Position)
+    fontFamily: FontFamily = field(default_factory=FontFamily)
+    backgroundColor: BackgroundColor = field(default_factory=BackgroundColor)
 
     @property
     def attributs(self):
@@ -51,7 +54,10 @@ class Style:
     def prewidth(self):
         "先找 width 相关属性"
 
-        pre = ["margin", "padding", "width"]
+        # 这个函数有点想废掉 因为我发现 attributs 返回的顺序就是定义的顺序
+        # 也就是说可以修改变量的位置达到这个效果
+        # 但是可能就不美观了
+        pre = ["fontSize", "margin", "padding", "width"]
         for name in pre:
             if self[name].value is not None:
                 continue
@@ -121,9 +127,6 @@ class Style:
         for name, attr in self.inheritable:
             attr.inherit(parent_style[name].value)  # 只继承值
 
-        if self.fontSize.value is None:
-            self.fontSize.transform(parent_style.fontSize.value)
-
         if self.position.equal("absolute"):
             normal_index = -1
 
@@ -162,6 +165,10 @@ class Style:
 @dataclass
 class SpanStyle(Style):
     display: Display = Display("inline")
+
+
+@dataclass
+class TextStyle(SpanStyle): ...
 
 
 @dataclass
