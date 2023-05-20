@@ -16,7 +16,7 @@ varsPattern = re.compile(r"{{(.*?)}}")
 class Template:
     "模板"
 
-    width: str = "800px"
+    width: str = "1000px"
     font_size: str = "16px"
 
     def __init__(self, vue: str = None, fp: TextIOWrapper = None, path: str = None, *args, **kwargs):
@@ -202,6 +202,15 @@ class Template:
                 "设置矩形偏移 为子节点编号"
 
                 if parent is not None:
+
+                    if not parent.style.display.equal("grid"):
+                        if dom.style.display.equal("inline", "inline-block"):
+                            if dom.tagName != "text":
+                                w = 0
+                                for child in dom.childNodes:
+                                    w += child.content.width
+                                dom.content.width = w
+
                     parent.content.append(dom.content)
 
         return self.root

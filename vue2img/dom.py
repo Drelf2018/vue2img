@@ -5,7 +5,7 @@ from typing import Dict, List, Optional, Tuple, Type, Union
 import httpx
 from PIL import Image, ImageDraw
 
-from .manager import fontManager
+from .manager import FontManager
 from .operation import radiusMask
 from .style import *
 
@@ -133,6 +133,19 @@ class Rectangle:
         if child.position.equal("absolute"):
             return
 
+        if child.dom.style.display.equal("inline", "inline-block"):
+            bro = child.dom.previousSibling
+            if bro is not None:
+                cnt = bro.content
+                w, h = cnt.size
+                temp_width = cnt.offsetX + w + cnt.padding.right + cnt.margin.right + child.margin.left + child.padding.left
+                if temp_width + child.width + child.padding.right + child.margin.right <= self.width:
+                    if bro.style.display.equal("inline", "inline-block"):
+                        # 放一行 粗略的底部对齐吧 这里肯定要改的
+                        
+                        child.set_offset(temp_width, cnt.offsetY + h - child.height)
+                        return
+    
         overlap = max(0, child.margin.top - self.lastMargin)  # margin 重叠
         child.set_offset(child.margin.left + child.padding.left, self.height + overlap + child.padding.top)
         self.heighten(overlap + child.padding.tiandi + child.finalHeight + child.margin.bottom)
@@ -345,6 +358,8 @@ class ImgDOM(DOM):
 class TextDOM(DOM):
     "文字节点"
 
+    tagStyle: TextStyle = TextStyle()
+
     def __init__(self, parentNode: DOM, text: str = ""):
         super().__init__()
         self.text = text
@@ -353,31 +368,49 @@ class TextDOM(DOM):
     def set_size(self):
         "根据最大限制宽度切割文本"
 
-        # 获取书写区域
-        self.inner = self.parentNode.content
-        self.max_width = self.inner.width
+        # 获取书写区域、字体
+        bro = self.previousSibling
+        first_width = max_width = self.parentNode.content.width
+        self.font = FontManager.from_style(self.parentNode.style)
+
+        # display: inline 和 float: left 等属性出现会使得
+        # 文字前几行最大宽度为父元素内容宽度减去前一个兄弟元素宽度
+        # 也可能不是兄弟元素啊烦死了 烦死了 烦死了 烦死了 烦死了 烦死了
+        # 先处理 inline 吧 float 好麻烦
+
+        if bro is not None and bro.style.display.equal("inline", "inline-block"):
+            # 找到兄弟的右下角横坐标减去父元素矩形横坐标就是占用的宽度
+            # 所以本元素的第一次最大宽度要减去占用的宽度
+            # 然后这行还要底部对齐还是啥底线对齐吗的 所以纵坐标也要
+            content = bro.content
+            first_x = content.x + content.width + content.padding.right + content.margin.right
+            first_bottom = content.y + content.height + content.padding.bottom + content.margin.bottom
+            first_width -= (first_x - self.parentNode.content.x)
+            # 吗的不写了
+            
 
         # 分割文本
-        fontpath = self.parentNode.style.fontFamily.value
-        self.font = fontManager[fontpath, int(self.parentNode.style.fontSize.value)]
-
         sentences = []
         self.height = 0.0
-        temp = ""
 
-        def inner(temp: str):
+        def getHeight(temp: str):
             sentences.append(temp)
             _, offset, _, h = self.font.getbbox(temp)
             return offset / 2 + h
 
-        for chn in self.text:
-            if self.font.getlength(temp + chn) > self.max_width:
-                self.height += inner(temp)
-                temp = chn
-            else:
+        def split(text: str, max_width: float):
+            temp = ""
+            for chn in text:
+                if self.font.getlength(temp + chn) > max_width:
+                    return temp
                 temp += chn
-        if temp != "":
-            self.height += inner(temp)
+            return temp
+
+        tt = self.text
+        while len(tt):
+            temp = split(tt, max_width)
+            self.height += getHeight(temp)
+            tt = tt.replace(temp, "", 1)
 
         self.text = "\n".join(sentences)
 
@@ -385,8 +418,7 @@ class TextDOM(DOM):
         if len(sentences) == 1:
             self.width = self.font.getlength(self.text)
         else:
-            self.width = self.max_width
-        
+            self.width = max_width
         self.content = Rectangle(dom=self, width=self.width, height=self.height)
 
     @property
