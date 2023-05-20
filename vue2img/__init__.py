@@ -2,7 +2,7 @@ from typing import List
 from .app import Plugin, createApp, image
 from .attribute import *
 from .dom import *
-from .manager import fontManager
+from .manager import FontManager
 from .operation import getCuttedBody, radiusMask, word2cloud
 from .style import *
 from .template import Template
